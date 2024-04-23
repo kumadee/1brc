@@ -1,0 +1,2 @@
+aiofiles
+polars-lts-cpu

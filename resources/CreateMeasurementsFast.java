@@ -40,7 +40,7 @@ public class CreateMeasurementsFast {
     long start = System.currentTimeMillis();
 
     if (args.length != 1) {
-      System.out.println("Usage: create_measurements.sh <number of records to create>");
+      System.err.println("Usage: create_measurements.sh <number of records to create>");
       System.exit(1);
     }
 
@@ -48,18 +48,9 @@ public class CreateMeasurementsFast {
     try {
       size = Integer.parseInt(args[0]);
     } catch (NumberFormatException e) {
-      System.out.println("Invalid value for <number of records to create>");
-      System.out.println("Usage: CreateMeasurements <number of records to create>");
+      System.err.println("Invalid value for <number of records to create>");
+      System.err.println("Usage: CreateMeasurements <number of records to create>");
       System.exit(1);
-    }
-
-    final Path MEASUREMENT_FILE = Path.of("./measurements-%d.txt".formatted(size));
-
-    try {
-      Files.deleteIfExists(MEASUREMENT_FILE);
-      Files.createFile(MEASUREMENT_FILE);
-    } catch (Exception e) {
-      // ignore
     }
 
     // @formatter:off
@@ -501,34 +492,31 @@ public class CreateMeasurementsFast {
         new WeatherStation("Zanzibar City", 26.0),
         new WeatherStation("Zürich", 9.3));
 
-    int chunkSize = (size / 10_000_000) == 0 ? size : 10_000_000;
-    int numberOfFutures = size / chunkSize;
-    if (numberOfFutures == 0) {
-      numberOfFutures = 1;
-    }
+    int numberOfFutures = 4;
+    int chunkSize = 1_000_000;
+    int repeat = size / (chunkSize * numberOfFutures);
+    System.err.println("numberOfFutures: %d, chunkSize: %d, repeat: %d".formatted(numberOfFutures, chunkSize, repeat));
     CompletableFuture<?>[] futures = new CompletableFuture[numberOfFutures];
 
-    for (int n = 0; n < numberOfFutures; n++) {
-      int finalN = n;
-      futures[n] = CompletableFuture.runAsync(() -> {
-        StringBuilder builder = new StringBuilder();
-        for (int i = finalN * chunkSize; i <= (finalN + 1) * chunkSize - 1; i++) {
-          WeatherStation station = stations.get(ThreadLocalRandom.current().nextInt(stations.size()));
-          builder.append(station.id())
-              .append(";")
-              .append(station.measurement())
-              .append('\n');
-        }
-        try (BufferedWriter bw = Files.newBufferedWriter(MEASUREMENT_FILE, StandardOpenOption.APPEND)) {
-          bw.write(builder.toString());
-        } catch (IOException e) {
-          throw new RuntimeException(e);
-        }
-      }, EXECUTOR_SERVICE);
+    for (int k = 0; k < repeat; k++) {
+      for (int n = 0; n < numberOfFutures; n++) {
+        int finalN = n;
+        futures[n] = CompletableFuture.runAsync(() -> {
+          StringBuilder builder = new StringBuilder();
+          for (int i = finalN * chunkSize; i <= (finalN + 1) * chunkSize - 1; i++) {
+            WeatherStation station = stations.get(ThreadLocalRandom.current().nextInt(stations.size()));
+            builder.append(station.id())
+                .append(";")
+                .append(station.measurement())
+                .append("\n");
+          }
+          System.out.println(builder.toString());
+        }, EXECUTOR_SERVICE);
+      }
+
+      CompletableFuture.allOf(futures).join();
     }
 
-    CompletableFuture.allOf(futures).join();
-
-    System.out.printf("Created file with %,d measurements in %s ms%n", size, System.currentTimeMillis() - start);
+    System.err.printf("Created file with %,d measurements in %s ms%n", size, System.currentTimeMillis() - start);
   }
 }
